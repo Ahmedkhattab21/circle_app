@@ -48,7 +48,8 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
+      backgroundColor: Colors.white,
+      body: SafeArea(child: Stack(
         children: [
           Padding(
             padding: EdgeInsets.only(bottom: 20),
@@ -62,7 +63,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
               ),
             ),
         ],
-      ),
+      ))
     );
   }
 }
