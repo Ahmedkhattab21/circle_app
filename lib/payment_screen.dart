@@ -8,20 +8,24 @@ const paymentWebViewUrl = 'https://cirgm.com/';
 const _iphoneSafariUserAgent =
     'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) '
     'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 '
-    'Mobile/15E148 Safari/604.1';
+    'Mobile/15E148 Safari/604.1 CIRGMApp/1';
 
 class WebViewPaymentScreen extends StatefulWidget {
   const WebViewPaymentScreen({super.key});
 
   @override
-  State<WebViewPaymentScreen> createState() => _WebViewPaymentScreenState();
+  State<WebViewPaymentScreen> createState() =>
+      _WebViewPaymentScreenState();
 }
 
 class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   late final WebViewController controller;
+
   var _isLoading = true;
   var _loadingProgress = 0;
+
   String? _errorMessage;
+
   Timer? _loadingTimer;
   Timer? _pageFixTimer;
 
@@ -37,8 +41,10 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
         NavigationDelegate(
           onProgress: (progress) {
             if (!mounted) return;
+
             setState(() {
               _loadingProgress = progress;
+
               if (progress >= 90) {
                 _isLoading = false;
               }
@@ -52,14 +58,20 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
             _applyPageFixes();
           },
           onWebResourceError: (error) {
-            if (!mounted || error.isForMainFrame == false) return;
+            if (!mounted || error.isForMainFrame == false) {
+              return;
+            }
+
             _loadingTimer?.cancel();
+
             setState(() {
               _isLoading = false;
               _errorMessage = error.description;
             });
           },
-          onNavigationRequest: (_) => NavigationDecision.navigate,
+          onNavigationRequest: (_) {
+            return NavigationDecision.navigate;
+          },
         ),
       );
 
@@ -69,12 +81,16 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   Future<void> _loadInitialPage() async {
     await controller.clearCache();
     await controller.clearLocalStorage();
-    await controller.loadRequest(Uri.parse(paymentWebViewUrl));
+
+    await controller.loadRequest(
+      Uri.parse(paymentWebViewUrl),
+    );
   }
 
   void _startLoading() {
     _loadingTimer?.cancel();
     _pageFixTimer?.cancel();
+
     if (!mounted) return;
 
     setState(() {
@@ -83,16 +99,28 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
       _errorMessage = null;
     });
 
-    _pageFixTimer = Timer(const Duration(seconds: 4), _applyPageFixes);
-    _loadingTimer = Timer(const Duration(seconds: 6), () {
-      if (!mounted) return;
-      setState(() => _isLoading = false);
-    });
+    _pageFixTimer = Timer(
+      const Duration(seconds: 4),
+      _applyPageFixes,
+    );
+
+    _loadingTimer = Timer(
+      const Duration(seconds: 6),
+          () {
+        if (!mounted) return;
+
+        setState(() {
+          _isLoading = false;
+        });
+      },
+    );
   }
 
   void _stopLoading() {
     _loadingTimer?.cancel();
+
     if (!mounted) return;
+
     setState(() {
       _isLoading = false;
       _loadingProgress = 100;
@@ -107,21 +135,32 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
           document.body.style.background = '#fff';
           document.body.style.opacity = '1';
           document.body.style.visibility = 'visible';
-          document.body.classList.add('loaded', 'woodmart-loaded');
 
-          var style = document.getElementById('circle-webview-fixes');
+          document.body.classList.add(
+            'loaded',
+            'woodmart-loaded'
+          );
+
+          var style = document.getElementById(
+            'circle-webview-fixes'
+          );
+
           if (!style) {
             style = document.createElement('style');
             style.id = 'circle-webview-fixes';
+
             style.textContent = [
               'body, html { opacity: 1 !important; visibility: visible !important; background: #fff !important; }',
               '.website-wrapper, .wd-page-wrapper, .main-page-wrapper, .wd-page-content { opacity: 1 !important; visibility: visible !important; }',
               '.wd-preloader, .preloader, .page-preloader, .woodmart-preloader, .wd-loader-overlay, .wd-search-loader { display: none !important; opacity: 0 !important; visibility: hidden !important; pointer-events: none !important; }'
             ].join('\n');
+
             document.head.appendChild(style);
           }
 
-          document.querySelectorAll('.wd-preloader, .preloader, .page-preloader, .woodmart-preloader, .wd-loader-overlay, .wd-search-loader').forEach(function (el) {
+          document.querySelectorAll(
+            '.wd-preloader, .preloader, .page-preloader, .woodmart-preloader, .wd-loader-overlay, .wd-search-loader'
+          ).forEach(function (el) {
             el.style.display = 'none';
             el.style.opacity = '0';
             el.style.visibility = 'hidden';
@@ -130,7 +169,8 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
         })();
       ''');
     } catch (_) {
-      // The document may not be ready yet; the next load callback can retry.
+      // The document may not be ready yet.
+      // The next page-load callback can retry.
     }
   }
 
@@ -146,6 +186,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
     }
 
     if (!mounted) return;
+
     if (Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     } else {
@@ -157,6 +198,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   void dispose() {
     _loadingTimer?.cancel();
     _pageFixTimer?.cancel();
+
     super.dispose();
   }
 
@@ -166,6 +208,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
+
         _handleBackPressed();
       },
       child: Scaffold(
@@ -173,7 +216,10 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
         body: SafeArea(
           child: Stack(
             children: [
-              WebViewWidget(controller: controller),
+              WebViewWidget(
+                controller: controller,
+              ),
+
               if (_isLoading)
                 Positioned(
                   left: 0,
@@ -185,6 +231,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
                         : _loadingProgress / 100,
                   ),
                 ),
+
               if (_errorMessage != null)
                 ColoredBox(
                   color: Colors.white,
@@ -196,13 +243,17 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
                         children: [
                           Text(
                             'Unable to load the page',
-                            style: Theme.of(context).textTheme.titleMedium,
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium,
                           ),
                           const SizedBox(height: 8),
                           Text(
                             _errorMessage!,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                            style: Theme.of(context)
+                                .textTheme
+                                .bodyMedium,
                           ),
                           const SizedBox(height: 16),
                           ElevatedButton(
