@@ -92,7 +92,9 @@ class IapService {
       },
     );
 
-    final available = await _store.isAvailable();
+    final available = await _store.isAvailable().timeout(
+      const Duration(seconds: 10),
+    );
     if (!available) {
       throw StateError('Apple In-App Purchase is unavailable.');
     }
@@ -101,7 +103,9 @@ class IapService {
   }
 
   Future<void> _loadProductsAllowList() async {
-    final response = await http.get(Uri.parse(iapProductsUrl));
+    final response = await http
+        .get(Uri.parse(iapProductsUrl))
+        .timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) {
       throw StateError('Unable to load Apple product mapping.');
     }

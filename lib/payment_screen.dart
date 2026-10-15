@@ -9,10 +9,6 @@ import 'package:webview_flutter/webview_flutter.dart';
 import 'services/iap_service.dart';
 
 const paymentWebViewUrl = 'https://cirgm.com/';
-const _iphoneSafariUserAgent =
-    'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) '
-    'AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 '
-    'Mobile/15E148 Safari/604.1 CIRGMApp/1';
 
 class WebViewPaymentScreen extends StatefulWidget {
   const WebViewPaymentScreen({super.key});
@@ -37,14 +33,9 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   void initState() {
     super.initState();
 
-    final userAgent = defaultTargetPlatform == TargetPlatform.iOS
-        ? '$_iphoneSafariUserAgent CIRGMIAP/1'
-        : _iphoneSafariUserAgent;
-
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
-      ..setUserAgent(userAgent)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (progress) {
@@ -93,13 +84,17 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
     }
 
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      unawaited(_initializeIapAndLoad());
-    } else {
-      unawaited(_loadInitialPage());
+      unawaited(_initializeIap());
     }
+
+    // WKWebView is more reliable when the first request starts after the
+    // platform view has been attached to the widget tree.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_loadInitialPage());
+    });
   }
 
-  Future<void> _initializeIapAndLoad() async {
+  Future<void> _initializeIap() async {
     try {
       await _iapService.initialize(
         bridge: _runIapJavascript,
@@ -108,14 +103,10 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
         },
       );
     } catch (error) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = 'Apple purchase is unavailable: $error';
-        });
-      }
+      debugPrint('Apple purchase is unavailable: $error');
     }
 
-    await _loadInitialPage();
+    // IAP availability must not prevent the website from opening.
   }
 
   Future<void> _loadInitialPage() async {
