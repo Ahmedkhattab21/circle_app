@@ -54,7 +54,8 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
           },
           onPageFinished: (_) {
             _stopLoading();
-            _applyPageFixes();
+            unawaited(_applyPageFixes());
+            unawaited(_verifyIapWebView());
           },
           onWebResourceError: (error) {
             if (!mounted || error.isForMainFrame == false) {
@@ -83,15 +84,51 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
       );
     }
 
-    if (defaultTargetPlatform == TargetPlatform.iOS) {
-      unawaited(_initializeIap());
-    }
-
     // WKWebView is more reliable when the first request starts after the
     // platform view has been attached to the widget tree.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_loadInitialPage());
+      if (mounted) unawaited(_prepareWebViewAndLoad());
     });
+  }
+
+  Future<void> _prepareWebViewAndLoad() async {
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      try {
+        await _configureIosUserAgent();
+      } catch (error) {
+        debugPrint('Unable to configure the iOS WebView User-Agent: $error');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _errorMessage =
+                'Unable to configure Apple IAP WebView integration.';
+          });
+        }
+        return;
+      }
+
+      unawaited(_initializeIap());
+    }
+
+    await _loadInitialPage();
+  }
+
+  Future<void> _configureIosUserAgent() async {
+    final originalUserAgent = await controller.getUserAgent();
+    if (originalUserAgent == null || originalUserAgent.trim().isEmpty) {
+      throw StateError('The platform does not expose the default User-Agent.');
+    }
+
+    final userAgentParts = originalUserAgent
+        .split(RegExp(r'\s+'))
+        .where(
+          (part) =>
+              part.isNotEmpty && part != 'CIRGMApp/1' && part != 'CIRGMIAP/1',
+        )
+        .toList();
+    userAgentParts.addAll(['CIRGMApp/1', 'CIRGMIAP/1']);
+
+    await controller.setUserAgent(userAgentParts.join(' '));
   }
 
   Future<void> _initializeIap() async {
@@ -111,6 +148,19 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
 
   Future<void> _loadInitialPage() async {
     await controller.loadRequest(Uri.parse(paymentWebViewUrl));
+  }
+
+  Future<void> _verifyIapWebView() async {
+    if (!kDebugMode) return;
+
+    try {
+      final result = await controller.runJavaScriptReturningResult(
+        'navigator.userAgent + " | " + (typeof window.CircleIAP)',
+      );
+      debugPrint('IAP WebView diagnostic: $result');
+    } catch (error) {
+      debugPrint('IAP WebView diagnostic failed: $error');
+    }
   }
 
   Future<void> _runIapJavascript(
