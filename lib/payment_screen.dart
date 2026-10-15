@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+
+import 'services/iap_service.dart';
 
 const paymentWebViewUrl = 'https://cirgm.com/';
 const _iphoneSafariUserAgent =
@@ -14,12 +18,12 @@ class WebViewPaymentScreen extends StatefulWidget {
   const WebViewPaymentScreen({super.key});
 
   @override
-  State<WebViewPaymentScreen> createState() =>
-      _WebViewPaymentScreenState();
+  State<WebViewPaymentScreen> createState() => _WebViewPaymentScreenState();
 }
 
 class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   late final WebViewController controller;
+  final IapService _iapService = IapService();
 
   var _isLoading = true;
   var _loadingProgress = 0;
@@ -33,10 +37,14 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   void initState() {
     super.initState();
 
+    final userAgent = defaultTargetPlatform == TargetPlatform.iOS
+        ? '$_iphoneSafariUserAgent CIRGMIAP/1'
+        : _iphoneSafariUserAgent;
+
     controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(Colors.white)
-      ..setUserAgent(_iphoneSafariUserAgent)
+      ..setUserAgent(userAgent)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (progress) {
@@ -75,15 +83,51 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
         ),
       );
 
-    _loadInitialPage();
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      controller.addJavaScriptChannel(
+        'CircleIAP',
+        onMessageReceived: (message) {
+          unawaited(_iapService.handlePageMessage(message.message));
+        },
+      );
+    }
+
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      unawaited(_initializeIapAndLoad());
+    } else {
+      unawaited(_loadInitialPage());
+    }
+  }
+
+  Future<void> _initializeIapAndLoad() async {
+    try {
+      await _iapService.initialize(
+        bridge: _runIapJavascript,
+        onTransactionFinished: () {
+          if (mounted) unawaited(_reload());
+        },
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Apple purchase is unavailable: $error';
+        });
+      }
+    }
+
+    await _loadInitialPage();
   }
 
   Future<void> _loadInitialPage() async {
-    await controller.clearCache();
-    await controller.clearLocalStorage();
+    await controller.loadRequest(Uri.parse(paymentWebViewUrl));
+  }
 
-    await controller.loadRequest(
-      Uri.parse(paymentWebViewUrl),
+  Future<void> _runIapJavascript(
+    String functionName,
+    Map<String, dynamic> data,
+  ) async {
+    await controller.runJavaScript(
+      'window.$functionName(${jsonEncode(data)});',
     );
   }
 
@@ -99,21 +143,15 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
       _errorMessage = null;
     });
 
-    _pageFixTimer = Timer(
-      const Duration(seconds: 4),
-      _applyPageFixes,
-    );
+    _pageFixTimer = Timer(const Duration(seconds: 4), _applyPageFixes);
 
-    _loadingTimer = Timer(
-      const Duration(seconds: 6),
-          () {
-        if (!mounted) return;
+    _loadingTimer = Timer(const Duration(seconds: 6), () {
+      if (!mounted) return;
 
-        setState(() {
-          _isLoading = false;
-        });
-      },
-    );
+      setState(() {
+        _isLoading = false;
+      });
+    });
   }
 
   void _stopLoading() {
@@ -198,6 +236,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
   void dispose() {
     _loadingTimer?.cancel();
     _pageFixTimer?.cancel();
+    unawaited(_iapService.dispose());
 
     super.dispose();
   }
@@ -216,9 +255,7 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
         body: SafeArea(
           child: Stack(
             children: [
-              WebViewWidget(
-                controller: controller,
-              ),
+              WebViewWidget(controller: controller),
 
               if (_isLoading)
                 Positioned(
@@ -243,17 +280,13 @@ class _WebViewPaymentScreenState extends State<WebViewPaymentScreen> {
                         children: [
                           Text(
                             'Unable to load the page',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium,
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
                           const SizedBox(height: 8),
                           Text(
                             _errorMessage!,
                             textAlign: TextAlign.center,
-                            style: Theme.of(context)
-                                .textTheme
-                                .bodyMedium,
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           const SizedBox(height: 16),
                           ElevatedButton(
